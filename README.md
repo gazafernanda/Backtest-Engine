@@ -7,15 +7,25 @@ gold, lot/pip accounting and price action structure.
 
 ---
 
+**Live:** <https://gazafernanda.github.io/Backtest-Engine/>
+
 ## Quick start
 
 ```bash
 npm install
-cp .env.example .env          # then paste your key into it
 npm run dev
 ```
 
-A free Twelve Data key (800 requests/day) comes from <https://twelvedata.com/apikey>.
+Then paste a free Twelve Data key (800 requests/day, from
+<https://twelvedata.com/apikey>) into the sidebar. It is kept in your browser's localStorage and
+goes nowhere else.
+
+For a local-only setup you can instead copy `.env.example` to `.env` and set
+`VITE_TWELVEDATA_API_KEY`. The sidebar key wins when both are present.
+
+> **Do not put a key in the deployed build.** Anything passed as a `VITE_` variable is inlined into
+> the JavaScript bundle and readable by anyone who loads the page. The Pages deploy ships with no
+> key on purpose; each visitor supplies their own.
 
 Without a key the app still runs, but on **generated** prices. Those runs are labelled with an
 orange banner and flagged as `isSyntheticData` — they demonstrate the engine, they are not results.
@@ -24,6 +34,17 @@ orange banner and flagged as `isSyntheticData` — they demonstrate the engine, 
 npm run build    # typecheck + production bundle
 npm run smoke    # engine self-checks (pip maths, lookahead safety, equity reconciliation)
 ```
+
+## Deployment
+
+Pushing to `main` builds and publishes to GitHub Pages via
+`.github/workflows/deploy.yml`. The smoke test gates the deploy — if the engine's arithmetic or
+lookahead guarantees break, nothing ships.
+
+One-time setup in the repo: **Settings → Pages → Source: GitHub Actions**.
+
+The build sets Vite's `base` to `/Backtest-Engine/`, since Pages serves project sites from a
+subpath. Rename the repo and that value has to change with it.
 
 ---
 

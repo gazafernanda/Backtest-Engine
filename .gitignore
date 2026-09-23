@@ -1,6 +1,7 @@
 node_modules/
 dist/
 dist-ssr/
+*.tsbuildinfo
 
 # Local API keys — never commit these.
 .env

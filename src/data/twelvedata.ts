@@ -4,8 +4,13 @@ import type { Candle } from '../types';
  * Market data layer — Twelve Data REST API.
  *
  * Free tier allows 800 requests/day and up to 5000 bars per request, which is
- * ample for single-symbol backtesting. The API key is read from the Vite env
- * (`VITE_TWELVEDATA_API_KEY`); see `.env.example`.
+ * ample for single-symbol backtesting.
+ *
+ * The key is resolved at runtime from localStorage first, then from the build
+ * env (`VITE_TWELVEDATA_API_KEY`, see `.env.example`). That order matters for
+ * the public GitHub Pages build: anything baked in via a VITE_ variable ends up
+ * readable in the shipped bundle, so the deployed site ships with no key and
+ * each visitor supplies their own, which never leaves their browser.
  *
  * When no key is configured, or the network/API fails, the loader falls back to
  * generated data so the UI still works offline. Callers get `isSynthetic: true`
@@ -14,8 +19,31 @@ import type { Candle } from '../types';
  */
 
 const API_BASE = 'https://api.twelvedata.com';
+const KEY_STORAGE = 'xau_td_apikey';
 
-const API_KEY: string = (import.meta.env?.VITE_TWELVEDATA_API_KEY as string | undefined) ?? '';
+const BUILD_KEY: string = (import.meta.env?.VITE_TWELVEDATA_API_KEY ?? '').trim();
+
+/** The key in effect: the visitor's own if they set one, else the build's. */
+export function getApiKey(): string {
+    try {
+        const stored = localStorage.getItem(KEY_STORAGE);
+        if (stored && stored.trim()) return stored.trim();
+    } catch {
+        // Private mode or blocked storage — fall through to the build key.
+    }
+    return BUILD_KEY;
+}
+
+/** Store the visitor's key locally, or clear it when given an empty string. */
+export function setApiKey(key: string): void {
+    try {
+        const trimmed = key.trim();
+        if (trimmed) localStorage.setItem(KEY_STORAGE, trimmed);
+        else localStorage.removeItem(KEY_STORAGE);
+    } catch {
+        console.warn('Could not persist the API key (storage unavailable)');
+    }
+}
 
 export interface FetchOptions {
     symbol: string;
@@ -47,19 +75,20 @@ interface TwelveDataResponse {
 }
 
 export function hasApiKey(): boolean {
-    return API_KEY.trim().length > 0;
+    return getApiKey().length > 0;
 }
 
 export async function fetchCandles(opts: FetchOptions): Promise<CandleResponse> {
     const cached = getFromCache(opts);
     if (cached) return { candles: cached, isSynthetic: false };
 
-    if (!hasApiKey()) {
+    const apiKey = getApiKey();
+    if (!apiKey) {
         return {
             candles: generateSyntheticGold(opts),
             isSynthetic: true,
             notice:
-                'No VITE_TWELVEDATA_API_KEY configured — showing generated data. Copy .env.example to .env and add a free key for real gold prices.',
+                'No API key set — showing generated data. Paste a free Twelve Data key in the sidebar for real gold prices.',
         };
     }
 
@@ -72,7 +101,7 @@ export async function fetchCandles(opts: FetchOptions): Promise<CandleResponse> 
             `&order=ASC` +
             `&timezone=UTC` +
             `&format=JSON` +
-            `&apikey=${encodeURIComponent(API_KEY)}`;
+            `&apikey=${encodeURIComponent(apiKey)}`;
 
         const response = await fetch(url);
         const data: TwelveDataResponse = await response.json();

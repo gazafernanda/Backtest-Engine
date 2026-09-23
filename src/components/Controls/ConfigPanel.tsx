@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useAppState } from '../../context/AppContext';
 import {
     SUPPORTED_SYMBOLS,
@@ -8,7 +8,7 @@ import {
     type SizingMode,
 } from '../../types';
 import { STRATEGIES } from '../../engine/strategies';
-import { fetchCandles, hasApiKey } from '../../data/twelvedata';
+import { fetchCandles, getApiKey, setApiKey, clearCache } from '../../data/twelvedata';
 import { runBacktest } from '../../engine/backtest';
 
 const SESSIONS: { value: SessionFilter; label: string }[] = [
@@ -21,8 +21,19 @@ const SESSIONS: { value: SessionFilter; label: string }[] = [
 
 export function ConfigPanel() {
     const { state, dispatch } = useAppState();
+    const [keyInput, setKeyInput] = useState(getApiKey());
+    const [keySaved, setKeySaved] = useState(false);
 
     const currentStrategy = STRATEGIES[state.strategyKey]?.() ?? null;
+
+    function handleSaveKey() {
+        setApiKey(keyInput);
+        // Cached candles were fetched under the previous key (or none at all).
+        clearCache();
+        setKeySaved(true);
+        dispatch({ type: 'SET_WARNING', warning: null });
+        window.setTimeout(() => setKeySaved(false), 2500);
+    }
 
     async function handleRunBacktest() {
         dispatch({ type: 'SET_LOADING', isLoading: true });
@@ -102,12 +113,37 @@ export function ConfigPanel() {
                 </div>
             </div>
 
-            {!hasApiKey() && (
-                <div className="config-warning">
-                    No API key found. Copy <code>.env.example</code> to <code>.env</code>, add a free
-                    Twelve Data key, and restart the dev server. Until then, runs use generated data.
+            <div className="config-section">
+                <label className="config-label">Twelve Data API Key</label>
+                <div className="config-input-group">
+                    <input
+                        type="password"
+                        className="config-input"
+                        placeholder="Paste your free API key"
+                        value={keyInput}
+                        onChange={(e) => setKeyInput(e.target.value)}
+                        onKeyDown={(e) => e.key === 'Enter' && handleSaveKey()}
+                        autoComplete="off"
+                        spellCheck={false}
+                    />
                 </div>
-            )}
+                <button className="config-clear-btn" onClick={handleSaveKey}>
+                    {keySaved ? 'Saved' : keyInput.trim() ? 'Save Key' : 'Clear Key'}
+                </button>
+                {!getApiKey() && (
+                    <div className="config-warning">
+                        No key set — runs will use <strong>generated</strong> data. Get a free one at{' '}
+                        <a href="https://twelvedata.com/apikey" target="_blank" rel="noreferrer">
+                            twelvedata.com/apikey
+                        </a>
+                        .
+                    </div>
+                )}
+                <p className="config-description">
+                    Stored only in this browser. It is never sent anywhere except Twelve Data, and
+                    never committed or deployed.
+                </p>
+            </div>
 
             {/* ── Market ─────────────────────────────────── */}
             <div className="config-section">
