@@ -103,7 +103,7 @@ export function StrategyComparison({ results }: Props) {
                             formatter={(value: string) => {
                                 const idx = parseInt(value.replace('strategy_', ''));
                                 const r = results[idx];
-                                return r ? `${r.strategyName} (${r.coinId})` : value;
+                                return r ? `${r.strategyName} (${r.symbol} ${r.interval})` : value;
                             }}
                             wrapperStyle={{ color: '#8892b0', fontSize: '12px' }}
                         />
@@ -129,6 +129,7 @@ export function StrategyComparison({ results }: Props) {
                         <tr>
                             <th>Strategy</th>
                             <th>Return</th>
+                            <th>Pips</th>
                             <th>Win Rate</th>
                             <th>Profit Factor</th>
                             <th>Max DD</th>
@@ -146,6 +147,9 @@ export function StrategyComparison({ results }: Props) {
                                 </td>
                                 <td className={r.metrics.totalReturnPercent >= 0 ? 'positive' : 'negative'}>
                                     {r.metrics.totalReturnPercent.toFixed(2)}%
+                                </td>
+                                <td className={r.metrics.totalPips >= 0 ? 'positive' : 'negative'}>
+                                    {r.metrics.totalPips >= 0 ? '+' : ''}{r.metrics.totalPips.toFixed(1)}
                                 </td>
                                 <td className={r.metrics.winRate >= 50 ? 'positive' : 'negative'}>
                                     {r.metrics.winRate.toFixed(1)}%

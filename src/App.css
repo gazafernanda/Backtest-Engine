@@ -1,1 +1,42 @@
 /* App-level component styles (minimal — most styles in index.css) */
+
+/*
+ * Advisory notices. The synthetic-data banner in particular must be impossible
+ * to miss: a result computed on generated prices looks exactly like a real one.
+ */
+.config-warning {
+    margin: 12px 0;
+    padding: 10px 12px;
+    border: 1px solid rgba(255, 145, 0, 0.35);
+    border-left: 3px solid #ff9100;
+    border-radius: 6px;
+    background: rgba(255, 145, 0, 0.08);
+    color: #ffc166;
+    font-size: 12px;
+    line-height: 1.5;
+}
+
+.config-warning code {
+    padding: 1px 5px;
+    border-radius: 4px;
+    background: rgba(0, 0, 0, 0.3);
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 11px;
+    color: #ffd699;
+}
+
+.synthetic-banner {
+    margin-bottom: 16px;
+    padding: 12px 16px;
+    border: 1px solid rgba(255, 145, 0, 0.4);
+    border-left: 4px solid #ff9100;
+    border-radius: 8px;
+    background: rgba(255, 145, 0, 0.1);
+    color: #ffc166;
+    font-size: 13px;
+    line-height: 1.55;
+}
+
+.synthetic-banner strong {
+    color: #ff9100;
+}

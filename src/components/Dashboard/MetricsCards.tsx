@@ -1,6 +1,13 @@
 import React from 'react';
 import type { PerformanceMetrics } from '../../types';
-import { formatCurrency, formatPercent, formatNumber, formatDuration } from '../../utils/format';
+import {
+    formatCurrency,
+    formatSignedCurrency,
+    formatPercent,
+    formatNumber,
+    formatDuration,
+    formatR,
+} from '../../utils/format';
 
 interface Props {
     metrics: PerformanceMetrics;
@@ -16,10 +23,16 @@ interface MetricCard {
 export function MetricsCards({ metrics }: Props) {
     const cards: MetricCard[] = [
         {
-            label: 'Total Return',
-            value: formatCurrency(metrics.totalReturn),
+            label: 'Net Return',
+            value: formatSignedCurrency(metrics.totalReturn),
             subLabel: formatPercent(metrics.totalReturnPercent),
             color: metrics.totalReturn >= 0 ? 'green' : 'red',
+        },
+        {
+            label: 'Net Pips',
+            value: `${metrics.totalPips >= 0 ? '+' : ''}${metrics.totalPips.toFixed(1)}`,
+            subLabel: `Avg ${formatR(metrics.avgRMultiple)} per trade`,
+            color: metrics.totalPips >= 0 ? 'green' : 'red',
         },
         {
             label: 'Win Rate',
@@ -30,44 +43,64 @@ export function MetricsCards({ metrics }: Props) {
         {
             label: 'Profit Factor',
             value: metrics.profitFactor === Infinity ? '∞' : formatNumber(metrics.profitFactor),
-            subLabel: `$${metrics.grossProfit.toFixed(0)} / $${metrics.grossLoss.toFixed(0)}`,
+            subLabel: `${formatCurrency(metrics.grossProfit)} / ${formatCurrency(metrics.grossLoss)}`,
             color: metrics.profitFactor >= 1.5 ? 'green' : metrics.profitFactor >= 1 ? 'yellow' : 'red',
         },
         {
-            label: 'Sharpe Ratio',
-            value: formatNumber(metrics.sharpeRatio),
-            subLabel: 'Annualized',
-            color: metrics.sharpeRatio >= 1 ? 'green' : metrics.sharpeRatio >= 0 ? 'yellow' : 'red',
+            label: 'Expectancy',
+            value: formatSignedCurrency(metrics.expectancy),
+            subLabel: `${formatR(metrics.expectancyR)} per trade`,
+            color: metrics.expectancy > 0 ? 'green' : 'red',
         },
         {
             label: 'Max Drawdown',
             value: formatPercent(-metrics.maxDrawdownPercent),
             subLabel: formatCurrency(-metrics.maxDrawdown),
-            color: metrics.maxDrawdownPercent <= 10 ? 'green' : metrics.maxDrawdownPercent <= 25 ? 'yellow' : 'red',
+            color:
+                metrics.maxDrawdownPercent <= 10
+                    ? 'green'
+                    : metrics.maxDrawdownPercent <= 25
+                        ? 'yellow'
+                        : 'red',
         },
         {
-            label: 'Expectancy',
-            value: formatPercent(metrics.expectancy),
-            subLabel: 'Per Trade',
-            color: metrics.expectancy > 0 ? 'green' : 'red',
+            label: 'Sharpe Ratio',
+            value: formatNumber(metrics.sharpeRatio),
+            subLabel: 'Annualised',
+            color: metrics.sharpeRatio >= 1 ? 'green' : metrics.sharpeRatio >= 0 ? 'yellow' : 'red',
         },
         {
-            label: 'Total Trades',
+            label: 'Trades',
             value: `${metrics.totalTrades}`,
-            subLabel: `Avg hold: ${formatDuration(metrics.avgHoldingPeriodMs)}`,
+            subLabel: `Avg hold ${formatDuration(metrics.avgHoldingPeriodMs)}`,
             color: 'blue',
         },
         {
             label: 'Avg Win / Loss',
-            value: `${formatPercent(metrics.avgWin)}`,
-            subLabel: `Loss: ${formatPercent(metrics.avgLoss)}`,
+            value: formatSignedCurrency(metrics.avgWin),
+            subLabel: `Loss ${formatSignedCurrency(metrics.avgLoss)}`,
             color: 'neutral',
         },
         {
             label: 'Best / Worst',
-            value: formatPercent(metrics.largestWin),
-            subLabel: `Worst: ${formatPercent(metrics.largestLoss)}`,
+            value: formatSignedCurrency(metrics.largestWin),
+            subLabel: `Worst ${formatSignedCurrency(metrics.largestLoss)}`,
             color: 'neutral',
+        },
+        {
+            label: 'Longest Streak',
+            value: `${metrics.maxConsecutiveLosses}L`,
+            subLabel: `Best run ${metrics.maxConsecutiveWins}W`,
+            color: metrics.maxConsecutiveLosses >= 8 ? 'red' : 'neutral',
+        },
+        {
+            label: 'Trading Costs',
+            value: formatCurrency(metrics.totalCommission + Math.abs(metrics.totalSwap)),
+            subLabel:
+                metrics.stopOutCount > 0
+                    ? `${metrics.stopOutCount} margin stop-out${metrics.stopOutCount > 1 ? 's' : ''}`
+                    : `Commission ${formatCurrency(metrics.totalCommission)}`,
+            color: metrics.stopOutCount > 0 ? 'red' : 'neutral',
         },
     ];
 

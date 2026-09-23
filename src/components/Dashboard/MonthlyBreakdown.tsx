@@ -13,6 +13,7 @@ export function MonthlyBreakdown({ monthlyBreakdown }: Props) {
 
     const totalPnl = monthlyBreakdown.reduce((s, m) => s + m.pnl, 0);
     const totalTrades = monthlyBreakdown.reduce((s, m) => s + m.trades, 0);
+    const totalPips = monthlyBreakdown.reduce((s, m) => s + m.pips, 0);
 
     // Color intensity calculation
     const maxAbsPnl = Math.max(...monthlyBreakdown.map((m) => Math.abs(m.pnlPercent)), 1);
@@ -40,6 +41,7 @@ export function MonthlyBreakdown({ monthlyBreakdown }: Props) {
                             <th>Month</th>
                             <th>PnL</th>
                             <th>PnL %</th>
+                            <th>Pips</th>
                             <th>Trades</th>
                             <th>Win Rate</th>
                         </tr>
@@ -57,6 +59,9 @@ export function MonthlyBreakdown({ monthlyBreakdown }: Props) {
                                 <td className={`trade-pnl ${m.pnlPercent >= 0 ? 'positive' : 'negative'}`}>
                                     {formatPercent(m.pnlPercent)}
                                 </td>
+                                <td className={`trade-pnl ${m.pips >= 0 ? 'positive' : 'negative'}`}>
+                                    {m.pips >= 0 ? '+' : ''}{m.pips.toFixed(1)}
+                                </td>
                                 <td>{m.trades}</td>
                                 <td className={m.winRate >= 50 ? 'positive' : 'negative'}>
                                     {m.winRate.toFixed(0)}%
@@ -71,6 +76,9 @@ export function MonthlyBreakdown({ monthlyBreakdown }: Props) {
                                 <strong>{formatCurrency(totalPnl)}</strong>
                             </td>
                             <td></td>
+                            <td className={`trade-pnl ${totalPips >= 0 ? 'positive' : 'negative'}`}>
+                                <strong>{totalPips >= 0 ? '+' : ''}{totalPips.toFixed(1)}</strong>
+                            </td>
                             <td><strong>{totalTrades}</strong></td>
                             <td></td>
                         </tr>

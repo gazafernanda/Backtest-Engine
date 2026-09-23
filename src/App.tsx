@@ -38,9 +38,9 @@ function Dashboard() {
                                 </defs>
                                 <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
                             </svg>
-                            <h1>Crypto Backtester</h1>
+                            <h1>Gold Backtester</h1>
                         </div>
-                        <p className="header-sub">AI-Assisted Strategy Backtesting Engine</p>
+                        <p className="header-sub">XAU/USD Price Action Backtesting Engine</p>
                     </div>
                     <div className="header-right">
                         <div className="header-stat">
@@ -63,15 +63,15 @@ function Dashboard() {
                         <div className="welcome-features">
                             <div className="welcome-feature">
                                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 20V10" /><path d="M18 20V4" /><path d="M6 20v-4" /></svg>
-                                <span>3 Strategies</span>
+                                <span>5 Price Action Strategies</span>
                             </div>
                             <div className="welcome-feature">
                                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10" /><path d="M12 6v6l4 2" /></svg>
-                                <span>10 Coins</span>
+                                <span>M1 → D1 Timeframes</span>
                             </div>
                             <div className="welcome-feature">
                                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" /><polyline points="22 4 12 14.01 9 11.01" /></svg>
-                                <span>9 Metrics</span>
+                                <span>Lot &amp; Pip Accounting</span>
                             </div>
                         </div>
                     </div>
@@ -88,11 +88,19 @@ function Dashboard() {
                             <div className="result-title">
                                 <h2>{activeResult.strategyName}</h2>
                                 <span className="result-meta">
-                                    {activeResult.coinId.toUpperCase()} · {activeResult.days}d ·{' '}
-                                    {activeResult.trades.length} trades
+                                    {activeResult.symbol} · {activeResult.interval} ·{' '}
+                                    {activeResult.barCount} bars · {activeResult.trades.length} trades
                                 </span>
                             </div>
                         </div>
+
+                        {activeResult.isSyntheticData && (
+                            <div className="synthetic-banner">
+                                <strong>Generated data.</strong> This run did not use real gold
+                                prices, so the numbers below are a demonstration of the engine — not
+                                a backtest result. Add a Twelve Data API key and run again.
+                            </div>
+                        )}
 
                         {/* Metrics */}
                         <MetricsCards metrics={activeResult.metrics} />
@@ -116,7 +124,10 @@ function Dashboard() {
 
                         {/* Trade List & Monthly Breakdown */}
                         <div className="data-row">
-                            <TradeList trades={activeResult.trades} />
+                            <TradeList
+                                trades={activeResult.trades}
+                                priceDecimals={activeResult.symbol === 'XAG/USD' ? 3 : 2}
+                            />
                             <MonthlyBreakdown monthlyBreakdown={activeResult.monthlyBreakdown} />
                         </div>
                     </div>
