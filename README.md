@@ -32,10 +32,22 @@ generated prices — useful as a demo of the interface, not as a signal source.
 
 The same constraint will apply to a Telegram bot token. See *Next* below.
 
-### Polling budget
+### How "live" it actually is
 
-One request every **2 minutes** — 720 a day against the free tier's 800. Polling every minute would
-exhaust the quota partway through the day.
+The free tier is **REST only** — there is no stream to subscribe to. Twelve Data's WebSocket starts
+at the Pro plan. So the chart polls, and the question is how fast the daily budget allows.
+
+800 requests a day spread evenly is one every 108 seconds, which feels dead. Instead:
+
+- **15 seconds** while the tab is visible
+- **nothing at all** when it is hidden — a chart nobody is reading costs zero
+- **120 seconds** past 700 requests, and polling stops at 780, leaving headroom for the alert bot
+
+An hour of actually watching costs about 240 requests. The header shows the day's spend, so the
+ceiling is never a surprise. It resets at 00:00 UTC.
+
+The last candle is the one still forming, so it moves between polls. Signals are only ever taken
+from closed bars.
 
 ---
 

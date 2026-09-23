@@ -3,6 +3,7 @@ import type { Candle } from '../types';
 import { DEFAULT_INSTRUMENT } from '../engine/instrument';
 import { scanSignals, resolveOutcome, type LiveSignal } from '../engine/liveSignal';
 import { fetchCandles, hasApiKey } from '../data/twelvedata';
+import { usedToday, quotaState, DAILY_LIMIT, HARD_LIMIT } from '../data/quota';
 import { SignalChart } from './SignalChart';
 import { formatDateTime, formatPrice } from '../utils/format';
 
@@ -13,11 +14,19 @@ const BARS = 500;
 /**
  * Polling cadence.
  *
- * The free Twelve Data tier allows 800 requests a day. At one request every two
- * minutes this run costs 720 a day, which fits with room to spare. Polling once
- * a minute would blow the daily budget before the session ended.
+ * The free Twelve Data tier is REST only — there is no stream to subscribe to,
+ * so "live" means polling as fast as the daily budget allows. 800 requests a day
+ * spread evenly would be one every 108 seconds, which feels dead.
+ *
+ * Instead: poll fast while you are actually looking at the chart, and spend
+ * nothing at all when the tab is hidden. An hour of watching costs 240 requests;
+ * a day of ignoring it costs none.
  */
-const POLL_MS = 120_000;
+const POLL_ACTIVE_MS = 15_000;
+/** Cadence once the day's budget is nearly gone. */
+const POLL_SLOW_MS = 120_000;
+/** Cached candles older than this are refetched — must be under the poll rate. */
+const CACHE_MS = 5_000;
 
 export function LiveMonitor() {
     const [candles, setCandles] = useState<Candle[]>([]);
@@ -26,14 +35,19 @@ export function LiveMonitor() {
     const [error, setError] = useState<string | null>(null);
     const [synthetic, setSynthetic] = useState(false);
     const [loading, setLoading] = useState(true);
-    const [secondsToNext, setSecondsToNext] = useState(POLL_MS / 1000);
+    const [paused, setPaused] = useState(false);
+    const [used, setUsed] = useState(0);
+    const [, forceTick] = useState(0);
 
     const spec = DEFAULT_INSTRUMENT;
-    // Guards against two polls overlapping if one request runs long.
     const inFlight = useRef(false);
 
     const poll = useCallback(async () => {
         if (inFlight.current) return;
+        if (quotaState() === 'exhausted') {
+            setUsed(usedToday());
+            return;
+        }
         inFlight.current = true;
 
         try {
@@ -41,6 +55,7 @@ export function LiveMonitor() {
                 symbol: SYMBOL,
                 interval: INTERVAL,
                 outputsize: BARS,
+                cacheMs: CACHE_MS,
             });
 
             setCandles(res.candles);
@@ -51,29 +66,68 @@ export function LiveMonitor() {
         } catch (e) {
             setError(e instanceof Error ? e.message : 'Failed to load prices');
         } finally {
+            setUsed(usedToday());
             setLoading(false);
-            setSecondsToNext(POLL_MS / 1000);
             inFlight.current = false;
         }
     }, [spec]);
 
+    // Poll only while the tab is visible — a hidden chart nobody is reading is
+    // the cheapest thing to stop.
     useEffect(() => {
-        poll();
-        const id = window.setInterval(poll, POLL_MS);
-        return () => window.clearInterval(id);
+        let timer: number | undefined;
+
+        const schedule = () => {
+            window.clearInterval(timer);
+            const rate = quotaState() === 'ok' ? POLL_ACTIVE_MS : POLL_SLOW_MS;
+            timer = window.setInterval(poll, rate);
+        };
+
+        const onVisibility = () => {
+            if (document.hidden) {
+                window.clearInterval(timer);
+                setPaused(true);
+            } else {
+                setPaused(false);
+                poll();
+                schedule();
+            }
+        };
+
+        if (!document.hidden) {
+            poll();
+            schedule();
+        } else {
+            setPaused(true);
+        }
+
+        document.addEventListener('visibilitychange', onVisibility);
+        return () => {
+            window.clearInterval(timer);
+            document.removeEventListener('visibilitychange', onVisibility);
+        };
     }, [poll]);
 
-    // Countdown, purely cosmetic — the interval above does the real work.
+    // Repaint once a second so the freshness readout counts up.
     useEffect(() => {
-        const id = window.setInterval(() => {
-            setSecondsToNext((s) => (s > 0 ? s - 1 : 0));
-        }, 1000);
+        const id = window.setInterval(() => forceTick((n) => n + 1), 1000);
         return () => window.clearInterval(id);
     }, []);
 
     const active = signals[0] ?? null;
     const activeOutcome = active ? resolveOutcome(active, candles) : null;
-    const price = candles.length > 0 ? candles[candles.length - 1].close : null;
+    const last = candles.length > 0 ? candles[candles.length - 1] : null;
+    const price = last?.close ?? null;
+
+    const ageSeconds = lastUpdate ? Math.floor((Date.now() - lastUpdate) / 1000) : null;
+    const quota = quotaState();
+
+    let statusText: string;
+    if (loading) statusText = 'Loading…';
+    else if (paused) statusText = 'Paused — tab not visible';
+    else if (quota === 'exhausted') statusText = `Daily budget spent (${used}/${DAILY_LIMIT})`;
+    else if (ageSeconds !== null) statusText = `Updated ${ageSeconds}s ago`;
+    else statusText = 'Waiting';
 
     return (
         <div className="live-layout">
@@ -88,12 +142,14 @@ export function LiveMonitor() {
                 </div>
 
                 <div className="live-status">
-                    <span className={`live-dot ${loading ? 'busy' : synthetic ? 'warn' : 'ok'}`} />
-                    {loading
-                        ? 'Loading…'
-                        : lastUpdate
-                            ? `Updated ${formatDateTime(lastUpdate)} UTC · next in ${secondsToNext}s`
-                            : 'Waiting'}
+                    <span
+                        className={`live-dot ${loading ? 'busy' : paused || quota === 'exhausted' ? 'warn' : synthetic ? 'warn' : 'ok'
+                            }`}
+                    />
+                    {statusText}
+                    <span className="live-quota" title={`Requests used today, out of ${DAILY_LIMIT}`}>
+                        {used}/{DAILY_LIMIT}
+                    </span>
                 </div>
             </header>
 
@@ -104,12 +160,28 @@ export function LiveMonitor() {
                 </div>
             )}
 
+            {quota === 'exhausted' && hasApiKey() && (
+                <div className="live-banner">
+                    <strong>Daily budget spent.</strong> {used} of {DAILY_LIMIT} free requests used
+                    ({HARD_LIMIT} is the cut-off, leaving headroom for the alert bot). Polling
+                    resumes at 00:00 UTC.
+                </div>
+            )}
+
             {error && !synthetic && <div className="live-banner error">{error}</div>}
             {synthetic && hasApiKey() && <div className="live-banner">{error}</div>}
 
             <div className="live-chart-wrap">
                 <SignalChart candles={candles} signal={active} priceDecimals={spec.priceDecimals} />
             </div>
+
+            {last && (
+                <p className="live-footnote">
+                    Last bar {formatDateTime(last.timestamp)} UTC · polling every{' '}
+                    {(quota === 'ok' ? POLL_ACTIVE_MS : POLL_SLOW_MS) / 1000}s while this tab is
+                    visible, paused when it is not.
+                </p>
+            )}
 
             {active ? (
                 <section className="setup-card">

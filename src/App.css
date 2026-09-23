@@ -54,6 +54,20 @@
     font-variant-numeric: tabular-nums;
 }
 
+.live-quota {
+    padding: 2px 8px;
+    border-radius: 4px;
+    background: rgba(255, 255, 255, 0.06);
+    font-size: 11px;
+    cursor: help;
+}
+
+.live-footnote {
+    margin-top: -8px;
+    font-size: 11px;
+    color: var(--text-secondary, #8892b0);
+}
+
 .live-dot {
     width: 8px;
     height: 8px;

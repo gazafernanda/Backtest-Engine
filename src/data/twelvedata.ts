@@ -1,5 +1,6 @@
 import type { Candle } from '../types';
 import { fetchTimeSeries } from './twelvedataCore';
+import { recordRequest } from './quota';
 
 /**
  * Browser market data layer — caching and fallbacks around `twelvedataCore`.
@@ -29,6 +30,12 @@ export interface FetchOptions {
     symbol: string;
     interval: string;
     outputsize: number;
+    /**
+     * How long a cached response stays usable, in ms. Defaults to roughly one
+     * bar. Live polling passes something shorter, otherwise the cache would
+     * serve the same candles back and the chart would appear frozen.
+     */
+    cacheMs?: number;
 }
 
 export interface CandleResponse {
@@ -57,6 +64,7 @@ export async function fetchCandles(opts: FetchOptions): Promise<CandleResponse> 
     }
 
     try {
+        recordRequest();
         const candles = await fetchTimeSeries({ ...opts, apiKey });
         saveToCache(opts, candles);
         return { candles, isSynthetic: false };
@@ -110,7 +118,8 @@ function getFromCache(opts: FetchOptions): Candle[] | null {
         if (!raw) return null;
 
         const entry: CacheEntry = JSON.parse(raw);
-        if (Date.now() - entry.timestamp > cacheTtlMs(opts.interval)) {
+        const ttl = opts.cacheMs ?? cacheTtlMs(opts.interval);
+        if (Date.now() - entry.timestamp > ttl) {
             localStorage.removeItem(getCacheKey(opts));
             return null;
         }
