@@ -7,6 +7,7 @@ import {
     type SessionFilter,
     type SizingMode,
 } from '../../types';
+import { RISK_PROFILES, deriveConfig, type RiskProfile } from '../../engine/autoConfig';
 import { STRATEGIES } from '../../engine/strategies';
 import { fetchCandles, getApiKey, setApiKey, clearCache } from '../../data/twelvedata';
 import { runBacktest } from '../../engine/backtest';
@@ -19,12 +20,20 @@ const SESSIONS: { value: SessionFilter; label: string }[] = [
     { value: 'londonNewYork', label: 'London + NY (07–21 UTC)' },
 ];
 
+const SIZING_LABEL: Record<SizingMode, string> = {
+    riskPercent: '% Risk',
+    fixedLot: 'Fixed Lot',
+};
+
 export function ConfigPanel() {
     const { state, dispatch } = useAppState();
     const [keyInput, setKeyInput] = useState(getApiKey());
     const [keySaved, setKeySaved] = useState(false);
+    const [showAdvanced, setShowAdvanced] = useState(false);
 
     const currentStrategy = STRATEGIES[state.strategyKey]?.() ?? null;
+    const derived = deriveConfig(state.riskProfile, state.config.initialCapital, state.interval);
+    const activeProfile = RISK_PROFILES.find((p) => p.value === state.riskProfile);
 
     function handleSaveKey() {
         setApiKey(keyInput);
@@ -88,6 +97,7 @@ export function ConfigPanel() {
         value: number,
         onChange: (n: number) => void,
         step = 0.1,
+        disabled = false,
     ) => (
         <div className="config-input-group">
             <label>{label}</label>
@@ -96,10 +106,19 @@ export function ConfigPanel() {
                 className="config-input"
                 step={step}
                 value={value}
+                disabled={disabled}
                 onChange={(e) => onChange(Number(e.target.value))}
             />
         </div>
     );
+
+    /** Advanced fields are read-only while the config is being derived. */
+    const advField = (
+        label: string,
+        value: number,
+        onChange: (n: number) => void,
+        step = 0.1,
+    ) => numberField(label, value, onChange, step, state.autoMode);
 
     return (
         <div className="config-panel">
@@ -240,99 +259,142 @@ export function ConfigPanel() {
                 </div>
             )}
 
-            {/* ── Session ────────────────────────────────── */}
+            {/* ── Account size ───────────────────────────── */}
             <div className="config-section">
-                <label className="config-label">Entry Session</label>
-                <select
-                    className="config-select"
-                    value={state.config.sessionFilter}
-                    onChange={(e) =>
-                        dispatch({
-                            type: 'SET_CONFIG',
-                            config: { sessionFilter: e.target.value as SessionFilter },
-                        })
-                    }
-                >
-                    {SESSIONS.map((s) => (
-                        <option key={s.value} value={s.value}>{s.label}</option>
-                    ))}
-                </select>
-                <p className="config-description">
-                    Filters new entries only. Trades already open are still managed around the clock.
-                </p>
+                <label className="config-label">Account Size</label>
+                {numberField('Starting balance ($)', state.config.initialCapital, (n) =>
+                    dispatch({ type: 'SET_CONFIG', config: { initialCapital: n } }), 100)}
             </div>
 
-            {/* ── Sizing ─────────────────────────────────── */}
+            {/* ── Risk appetite ──────────────────────────── */}
             <div className="config-section">
-                <label className="config-label">Position Sizing</label>
+                <label className="config-label">How much to risk</label>
                 <div className="config-chips">
-                    {(['riskPercent', 'fixedLot'] as SizingMode[]).map((mode) => (
+                    {RISK_PROFILES.map((p) => (
                         <button
-                            key={mode}
-                            className={`config-chip ${state.config.sizingMode === mode ? 'active' : ''}`}
-                            onClick={() => dispatch({ type: 'SET_CONFIG', config: { sizingMode: mode } })}
+                            key={p.value}
+                            className={`config-chip ${state.riskProfile === p.value ? 'active' : ''}`}
+                            onClick={() =>
+                                dispatch({ type: 'SET_RISK_PROFILE', riskProfile: p.value as RiskProfile })
+                            }
                         >
-                            {mode === 'riskPercent' ? '% Risk' : 'Fixed Lot'}
+                            {p.label}
                         </button>
                     ))}
                 </div>
+                {activeProfile && <p className="config-description">{activeProfile.blurb}</p>}
+            </div>
 
-                {numberField('Initial Capital ($)', state.config.initialCapital, (n) =>
-                    dispatch({ type: 'SET_CONFIG', config: { initialCapital: n } }), 100)}
-
-                {state.config.sizingMode === 'riskPercent'
-                    ? numberField('Risk per Trade (%)', state.config.riskPercent, (n) =>
-                        dispatch({ type: 'SET_CONFIG', config: { riskPercent: n } }), 0.1)
-                    : numberField('Lot Size', state.config.fixedLot, (n) =>
-                        dispatch({ type: 'SET_CONFIG', config: { fixedLot: n } }), 0.01)}
-
-                {state.config.sizingMode === 'riskPercent' && (
+            {/* ── What was chosen automatically ──────────── */}
+            {state.autoMode && (
+                <div className="config-section">
+                    <label className="config-label">Set for you</label>
+                    <dl className="auto-summary">
+                        {derived.rationale.map((r) => (
+                            <div key={r.label} className="auto-summary-row">
+                                <dt title={r.why}>{r.label}</dt>
+                                <dd title={r.why}>{r.value}</dd>
+                            </div>
+                        ))}
+                    </dl>
                     <p className="config-description">
-                        Trades without a stop are skipped — risk-based sizing needs a defined
-                        invalidation level.
+                        Derived from your account size, risk choice and timeframe. Hover any row for
+                        the reasoning.
                     </p>
+                </div>
+            )}
+
+            {/* ── Advanced (opt-in) ──────────────────────── */}
+            <div className="config-section">
+                <button
+                    className="config-clear-btn"
+                    onClick={() => setShowAdvanced(!showAdvanced)}
+                >
+                    {showAdvanced ? 'Hide advanced settings' : 'Advanced settings'}
+                </button>
+
+                {showAdvanced && (
+                    <>
+                        <div className="config-warning">
+                            Editing anything here turns off automatic setup. Switch it back on to
+                            return to the derived values.
+                        </div>
+
+                        <div className="config-chips">
+                            {[true, false].map((on) => (
+                                <button
+                                    key={String(on)}
+                                    className={`config-chip ${state.autoMode === on ? 'active' : ''}`}
+                                    onClick={() => dispatch({ type: 'SET_AUTO_MODE', autoMode: on })}
+                                >
+                                    {on ? 'Automatic' : 'Manual'}
+                                </button>
+                            ))}
+                        </div>
+
+                        <label className="config-label">Entry Session</label>
+                        <select
+                            className="config-select"
+                            value={state.config.sessionFilter}
+                            disabled={state.autoMode}
+                            onChange={(e) =>
+                                dispatch({
+                                    type: 'SET_CONFIG',
+                                    config: { sessionFilter: e.target.value as SessionFilter },
+                                })
+                            }
+                        >
+                            {SESSIONS.map((s) => (
+                                <option key={s.value} value={s.value}>{s.label}</option>
+                            ))}
+                        </select>
+
+                        <label className="config-label">Position Sizing</label>
+                        <div className="config-chips">
+                            {(['riskPercent', 'fixedLot'] as SizingMode[]).map((mode) => (
+                                <button
+                                    key={mode}
+                                    className={`config-chip ${state.config.sizingMode === mode ? 'active' : ''}`}
+                                    disabled={state.autoMode}
+                                    onClick={() =>
+                                        dispatch({ type: 'SET_CONFIG', config: { sizingMode: mode } })
+                                    }
+                                >
+                                    {SIZING_LABEL[mode]}
+                                </button>
+                            ))}
+                        </div>
+
+                        {state.config.sizingMode === 'riskPercent'
+                            ? advField('Risk per Trade (%)', state.config.riskPercent, (n) =>
+                                dispatch({ type: 'SET_CONFIG', config: { riskPercent: n } }), 0.1)
+                            : advField('Lot Size', state.config.fixedLot, (n) =>
+                                dispatch({ type: 'SET_CONFIG', config: { fixedLot: n } }), 0.01)}
+
+                        {advField('Spread (pips)', state.config.spreadPips, (n) =>
+                            dispatch({ type: 'SET_CONFIG', config: { spreadPips: n } }), 0.1)}
+                        {advField('Commission ($ / lot / side)', state.config.commissionPerLot, (n) =>
+                            dispatch({ type: 'SET_CONFIG', config: { commissionPerLot: n } }), 0.5)}
+                        {advField('Slippage (pips)', state.config.slippagePips, (n) =>
+                            dispatch({ type: 'SET_CONFIG', config: { slippagePips: n } }), 0.1)}
+
+                        {advField('Stop Loss (pips, 0 = structural)', state.config.stopLossPips, (n) =>
+                            dispatch({ type: 'SET_CONFIG', config: { stopLossPips: n } }), 1)}
+                        {advField('Take Profit (pips, 0 = strategy target)', state.config.takeProfitPips, (n) =>
+                            dispatch({ type: 'SET_CONFIG', config: { takeProfitPips: n } }), 1)}
+                        {advField('Break-even Trigger (pips, 0 = off)', state.config.breakEvenPips, (n) =>
+                            dispatch({ type: 'SET_CONFIG', config: { breakEvenPips: n } }), 1)}
+
+                        {advField('Leverage (1 : N)', state.config.leverage, (n) =>
+                            dispatch({ type: 'SET_CONFIG', config: { leverage: n } }), 10)}
+                        {advField('Stop-out Level (%)', state.config.stopOutLevel, (n) =>
+                            dispatch({ type: 'SET_CONFIG', config: { stopOutLevel: n } }), 5)}
+                        {advField('Swap Long ($ / lot / night)', state.config.swapLongPerLot, (n) =>
+                            dispatch({ type: 'SET_CONFIG', config: { swapLongPerLot: n } }), 0.5)}
+                        {advField('Swap Short ($ / lot / night)', state.config.swapShortPerLot, (n) =>
+                            dispatch({ type: 'SET_CONFIG', config: { swapShortPerLot: n } }), 0.5)}
+                    </>
                 )}
-            </div>
-
-            {/* ── Dealing costs ──────────────────────────── */}
-            <div className="config-section">
-                <label className="config-label">Dealing Costs</label>
-                {numberField('Spread (pips)', state.config.spreadPips, (n) =>
-                    dispatch({ type: 'SET_CONFIG', config: { spreadPips: n } }), 0.1)}
-                {numberField('Commission ($ / lot / side)', state.config.commissionPerLot, (n) =>
-                    dispatch({ type: 'SET_CONFIG', config: { commissionPerLot: n } }), 0.5)}
-                {numberField('Slippage (pips)', state.config.slippagePips, (n) =>
-                    dispatch({ type: 'SET_CONFIG', config: { slippagePips: n } }), 0.1)}
-                <p className="config-description">
-                    Gold: 1 pip = $0.10 of price, worth $10 per 1.00 lot.
-                </p>
-            </div>
-
-            {/* ── Risk management ────────────────────────── */}
-            <div className="config-section">
-                <label className="config-label">Risk Management</label>
-                {numberField('Stop Loss (pips, 0 = structural)', state.config.stopLossPips, (n) =>
-                    dispatch({ type: 'SET_CONFIG', config: { stopLossPips: n } }), 1)}
-                {numberField('Take Profit (pips, 0 = strategy target)', state.config.takeProfitPips, (n) =>
-                    dispatch({ type: 'SET_CONFIG', config: { takeProfitPips: n } }), 1)}
-                {numberField('Break-even Trigger (pips, 0 = off)', state.config.breakEvenPips, (n) =>
-                    dispatch({ type: 'SET_CONFIG', config: { breakEvenPips: n } }), 1)}
-                <p className="config-description">
-                    At 0, each strategy's own structural stop and target are used.
-                </p>
-            </div>
-
-            {/* ── Account ────────────────────────────────── */}
-            <div className="config-section">
-                <label className="config-label">Account &amp; Financing</label>
-                {numberField('Leverage (1 : N)', state.config.leverage, (n) =>
-                    dispatch({ type: 'SET_CONFIG', config: { leverage: n } }), 10)}
-                {numberField('Stop-out Level (%)', state.config.stopOutLevel, (n) =>
-                    dispatch({ type: 'SET_CONFIG', config: { stopOutLevel: n } }), 5)}
-                {numberField('Swap Long ($ / lot / night)', state.config.swapLongPerLot, (n) =>
-                    dispatch({ type: 'SET_CONFIG', config: { swapLongPerLot: n } }), 0.5)}
-                {numberField('Swap Short ($ / lot / night)', state.config.swapShortPerLot, (n) =>
-                    dispatch({ type: 'SET_CONFIG', config: { swapShortPerLot: n } }), 0.5)}
             </div>
 
             <button className="config-run-btn" onClick={handleRunBacktest} disabled={state.isLoading}>

@@ -10,6 +10,7 @@ import { runBacktest } from '../src/engine/backtest';
 import { XAUUSD, pipValue, lotsForRisk, priceMoveToMoney, toPips } from '../src/engine/instrument';
 import { buildStructure } from '../src/engine/priceAction';
 import { STRATEGIES } from '../src/engine/strategies';
+import { deriveConfig } from '../src/engine/autoConfig';
 import type { Candle, BacktestConfig } from '../src/types';
 
 let failures = 0;
@@ -47,6 +48,48 @@ assert('swing high found at the spike', swingHigh?.index === 10, `index=${swingH
 assert('confirmed only after lookback bars', swingHigh?.confirmedAt === 13, `confirmedAt=${swingHigh?.confirmedAt}`);
 assert('not visible before confirmation', !isFinite(struct.lastSwingHigh[12]));
 assert('visible at confirmation bar', struct.lastSwingHigh[13] === 4306);
+
+// ── Automatic configuration ─────────────────────────────────
+console.log('\n--- auto config ---');
+check('careful risks 0.5%', deriveConfig('careful', 10000, '1min').config.riskPercent, 0.5);
+check('balanced risks 1%', deriveConfig('balanced', 10000, '1min').config.riskPercent, 1);
+check('aggressive risks 2%', deriveConfig('aggressive', 10000, '1min').config.riskPercent, 2);
+assert(
+    'intraday restricts entries to London/NY',
+    deriveConfig('balanced', 10000, '1min').config.sessionFilter === 'londonNewYork',
+);
+assert(
+    'daily does not restrict entry hours',
+    deriveConfig('balanced', 10000, '1day').config.sessionFilter === 'all',
+);
+assert(
+    'slippage is worse on faster timeframes',
+    deriveConfig('balanced', 10000, '1min').config.slippagePips >
+    deriveConfig('balanced', 10000, '1day').config.slippagePips,
+);
+assert(
+    'stops stay structural (no arbitrary pip distance)',
+    deriveConfig('balanced', 10000, '1min').config.stopLossPips === 0 &&
+    deriveConfig('balanced', 10000, '1min').config.takeProfitPips === 0,
+);
+assert(
+    'capital passes straight through',
+    deriveConfig('balanced', 25000, '15min').config.initialCapital === 25000,
+);
+assert(
+    'every derived value is explained',
+    deriveConfig('balanced', 10000, '1min').rationale.every((r) => r.why.length > 20),
+);
+
+// Risking a fixed percent must produce the same dollar risk regardless of how
+// wide the stop is — that is the entire point of the automatic sizing.
+{
+    const cfg = deriveConfig('balanced', 10000, '1min').config;
+    const wide = lotsForRisk(XAUUSD, 10000 * (cfg.riskPercent / 100), 50);
+    const tight = lotsForRisk(XAUUSD, 10000 * (cfg.riskPercent / 100), 10);
+    check('wide stop -> $100 risk', wide * 50 * pipValue(XAUUSD, 1), 100);
+    check('tight stop -> $100 risk', tight * 10 * pipValue(XAUUSD, 1), 100);
+}
 
 // ── Full run: accounting identity ───────────────────────────
 console.log('\n--- backtest run ---');

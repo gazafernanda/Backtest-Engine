@@ -48,6 +48,19 @@ subpath. Rename the repo and that value has to change with it.
 
 ---
 
+## Configuration
+
+The sidebar asks for two things: **how much money** and **how much risk** (Careful 0.5% /
+Balanced 1% / Aggressive 2% per trade). Everything else is derived from those plus the timeframe —
+position size, session filter, spread, slippage, leverage, financing — and the panel lists what was
+chosen, with the reasoning on hover.
+
+Position size is solved backwards from the stop, so a wide setup and a tight one risk the identical
+amount. That is what makes the percentage meaningful.
+
+`Advanced settings` reveals every underlying value. Switching that panel to **Manual** stops the
+automatic derivation and hands the controls over.
+
 ## What the engine models
 
 Gold is not traded as a fraction of your account — it is traded in lots, with a spread, financing

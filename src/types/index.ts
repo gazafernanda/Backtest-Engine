@@ -1,4 +1,5 @@
 import type { InstrumentSpec } from '../engine/instrument';
+import type { RiskProfile } from '../engine/autoConfig';
 
 // ─── OHLC Candle ─────────────────────────────────────────────
 export interface Candle {
@@ -216,6 +217,10 @@ export interface AppState {
     barCount: number;
     strategyKey: string;
     strategyParams: Record<string, number>;
+    /** How much of the account to risk. Drives the derived config in auto mode. */
+    riskProfile: RiskProfile;
+    /** When true, everything but capital and risk profile is derived. */
+    autoMode: boolean;
     config: BacktestConfig;
     isLoading: boolean;
     error: string | null;
@@ -231,6 +236,8 @@ export type AppAction =
     | { type: 'SET_STRATEGY'; strategyKey: string; params: Record<string, number> }
     | { type: 'SET_STRATEGY_PARAMS'; params: Record<string, number> }
     | { type: 'SET_CONFIG'; config: Partial<BacktestConfig> }
+    | { type: 'SET_RISK_PROFILE'; riskProfile: RiskProfile }
+    | { type: 'SET_AUTO_MODE'; autoMode: boolean }
     | { type: 'SET_LOADING'; isLoading: boolean }
     | { type: 'SET_ERROR'; error: string | null }
     | { type: 'SET_WARNING'; warning: string | null }

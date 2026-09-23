@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useReducer, type Dispatch } from 'react';
 import type { AppState, AppAction } from '../types';
 import { STRATEGIES } from '../engine/strategies';
+import { deriveConfig } from '../engine/autoConfig';
 
 function defaultParamsFor(key: string): Record<string, number> {
     const factory = STRATEGIES[key];
@@ -11,9 +12,9 @@ function defaultParamsFor(key: string): Record<string, number> {
 }
 
 /**
- * Defaults model a typical retail spot-gold account: 1:100 leverage, a 2-pip
- * (20 cent) spread, 1% of equity risked per trade, and entries restricted to
- * the London/New York overlap where gold actually moves.
+ * Everything but capital and risk appetite is derived — see `autoConfig.ts`.
+ * The stored config still holds a full snapshot so that turning off auto mode
+ * hands the advanced panel something coherent to edit.
  */
 const defaultState: AppState = {
     symbol: 'XAU/USD',
@@ -21,29 +22,9 @@ const defaultState: AppState = {
     barCount: 5000,
     strategyKey: 'breakOfStructure',
     strategyParams: defaultParamsFor('breakOfStructure'),
-    config: {
-        initialCapital: 10000,
-
-        sizingMode: 'riskPercent',
-        fixedLot: 0.1,
-        riskPercent: 1,
-
-        spreadPips: 2,
-        commissionPerLot: 0,
-        slippagePips: 0.5,
-
-        stopLossPips: 0,
-        takeProfitPips: 0,
-        breakEvenPips: 0,
-
-        leverage: 100,
-        stopOutLevel: 50,
-
-        swapLongPerLot: -5,
-        swapShortPerLot: 2,
-
-        sessionFilter: 'londonNewYork',
-    },
+    riskProfile: 'balanced',
+    autoMode: true,
+    config: deriveConfig('balanced', 10000, '1min').config,
     isLoading: false,
     error: null,
     warning: null,
@@ -51,12 +32,28 @@ const defaultState: AppState = {
     activeResultIndex: -1,
 };
 
+/**
+ * Re-derive the config whenever an input to it changes, but only while auto mode
+ * is on — once the user opens the advanced panel their values are left alone.
+ */
+function rederive(state: AppState): AppState {
+    if (!state.autoMode) return state;
+    return {
+        ...state,
+        config: deriveConfig(state.riskProfile, state.config.initialCapital, state.interval).config,
+    };
+}
+
 function appReducer(state: AppState, action: AppAction): AppState {
     switch (action.type) {
         case 'SET_SYMBOL':
             return { ...state, symbol: action.symbol };
         case 'SET_INTERVAL':
-            return { ...state, interval: action.interval };
+            return rederive({ ...state, interval: action.interval });
+        case 'SET_RISK_PROFILE':
+            return rederive({ ...state, riskProfile: action.riskProfile });
+        case 'SET_AUTO_MODE':
+            return rederive({ ...state, autoMode: action.autoMode });
         case 'SET_BAR_COUNT':
             return { ...state, barCount: action.barCount };
         case 'SET_STRATEGY':
@@ -64,7 +61,9 @@ function appReducer(state: AppState, action: AppAction): AppState {
         case 'SET_STRATEGY_PARAMS':
             return { ...state, strategyParams: { ...state.strategyParams, ...action.params } };
         case 'SET_CONFIG':
-            return { ...state, config: { ...state.config, ...action.config } };
+            // In auto mode only capital is user-owned; changing it re-derives
+            // the rest so sizing stays consistent with the new account size.
+            return rederive({ ...state, config: { ...state.config, ...action.config } });
         case 'SET_LOADING':
             return { ...state, isLoading: action.isLoading };
         case 'SET_ERROR':
