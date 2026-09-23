@@ -116,11 +116,74 @@ alerts start carrying a lot size.
 
 ---
 
+## Telegram alerts
+
+```bash
+npm run bot
+```
+
+A local process running the same strategies, pushing new setups to Telegram and following each one
+until it hits its target or its stop.
+
+**Setup** — add to `.env`:
+
+1. Message [@BotFather](https://t.me/BotFather), send `/newbot`, follow the prompts. It replies with
+   a token.
+2. Send any message to your new bot. It cannot message you first.
+3. Open `https://api.telegram.org/bot<TOKEN>/getUpdates` and copy
+   `result[0].message.chat.id`.
+
+```
+TELEGRAM_BOT_TOKEN=123456789:AAH...
+TELEGRAM_CHAT_ID=987654321
+BOT_ACCOUNT_SIZE=10000     # optional: include a suggested lot size
+```
+
+**Try it without a bot first:**
+
+```bash
+BOT_DRY_RUN=1 npm run bot   # prints alerts instead of sending them
+```
+
+**What arrives:**
+
+```
+🟢 LONG XAU/USD · 1min
+Liquidity Sweep
+
+Entry  4317.87
+SL     4316.62  (12.4 pips)
+TP     4320.40  (25.4 pips)
+R:R    1 : 2.04
+Size   0.80 lot  (risks $99.25 of $10000)
+
+Swept low 4317.60 and reclaimed
+2026-09-23 09:21 UTC
+```
+
+…then later:
+
+```
+✅ TARGET HIT — LONG XAU/USD
++25.4 pips  ·  +2.04R
+Held 8 bars
+```
+
+**Notes**
+
+- The first run records existing setups without announcing them, so starting the bot does not fire
+  off a burst of history. What it has already sent lives in `.bot-state.json` (gitignored), so a
+  restart does not repeat itself.
+- It polls every 2 minutes by default, sharing the same 800/day budget as the browser app. Running
+  both at once doubles the spend — set `BOT_POLL_SECONDS` higher, or close one.
+- The token stays in `.env` for the same reason as the API key: in a browser bundle, anyone loading
+  the page could post to your chat.
+
 ## Next
 
-**Telegram alerts.** The bot token has the same exposure problem as the API key, so it cannot live
-in a browser bundle. It needs a small local process — a script that polls, detects a new signal and
-calls the Telegram API — which can share the `engine/` code directly.
+**Real-time prices.** Twelve Data's WebSocket needs the Pro plan; the free tier is REST only. A
+relay such as Centrifugo distributes data but does not produce it, so it only helps once there is a
+streaming source to publish from — a paid feed, or a broker bridge.
 
 ---
 

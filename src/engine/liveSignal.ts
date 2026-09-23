@@ -66,7 +66,10 @@ export function scanSignals(
             if (riskPips <= 0) continue;
 
             out.push({
-                id: `${key}-${i}`,
+                // Keyed on the bar's timestamp, not its index: indexes shift as
+                // new candles arrive, which would make the alert bot re-send
+                // the same setup on every poll.
+                id: `${key}-${candles[i].timestamp}`,
                 strategy: strategy.name,
                 side: signal.side,
                 reason: signal.reason,
