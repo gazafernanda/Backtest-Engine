@@ -1,5 +1,4 @@
 import type { InstrumentSpec } from '../engine/instrument';
-import type { RiskProfile } from '../engine/autoConfig';
 
 // ─── OHLC Candle ─────────────────────────────────────────────
 export interface Candle {
@@ -210,41 +209,6 @@ export interface BacktestResult {
     isSyntheticData: boolean;
 }
 
-// ─── App State ───────────────────────────────────────────────
-export interface AppState {
-    symbol: string;
-    interval: string;
-    barCount: number;
-    strategyKey: string;
-    strategyParams: Record<string, number>;
-    /** How much of the account to risk. Drives the derived config in auto mode. */
-    riskProfile: RiskProfile;
-    /** When true, everything but capital and risk profile is derived. */
-    autoMode: boolean;
-    config: BacktestConfig;
-    isLoading: boolean;
-    error: string | null;
-    warning: string | null;
-    results: BacktestResult[];
-    activeResultIndex: number;
-}
-
-export type AppAction =
-    | { type: 'SET_SYMBOL'; symbol: string }
-    | { type: 'SET_INTERVAL'; interval: string }
-    | { type: 'SET_BAR_COUNT'; barCount: number }
-    | { type: 'SET_STRATEGY'; strategyKey: string; params: Record<string, number> }
-    | { type: 'SET_STRATEGY_PARAMS'; params: Record<string, number> }
-    | { type: 'SET_CONFIG'; config: Partial<BacktestConfig> }
-    | { type: 'SET_RISK_PROFILE'; riskProfile: RiskProfile }
-    | { type: 'SET_AUTO_MODE'; autoMode: boolean }
-    | { type: 'SET_LOADING'; isLoading: boolean }
-    | { type: 'SET_ERROR'; error: string | null }
-    | { type: 'SET_WARNING'; warning: string | null }
-    | { type: 'ADD_RESULT'; result: BacktestResult }
-    | { type: 'CLEAR_RESULTS' }
-    | { type: 'SET_ACTIVE_RESULT'; index: number };
-
 // ─── Tradable symbols ────────────────────────────────────────
 export interface SymbolOption {
     value: string;
@@ -255,5 +219,3 @@ export const SUPPORTED_SYMBOLS: SymbolOption[] = [
     { value: 'XAU/USD', label: 'XAU/USD — Gold Spot' },
     { value: 'XAG/USD', label: 'XAG/USD — Silver Spot' },
 ];
-
-export const BAR_COUNT_OPTIONS = [500, 1000, 2000, 5000];

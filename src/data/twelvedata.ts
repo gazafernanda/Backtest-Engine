@@ -6,11 +6,11 @@ import type { Candle } from '../types';
  * Free tier allows 800 requests/day and up to 5000 bars per request, which is
  * ample for single-symbol backtesting.
  *
- * The key is resolved at runtime from localStorage first, then from the build
- * env (`VITE_TWELVEDATA_API_KEY`, see `.env.example`). That order matters for
- * the public GitHub Pages build: anything baked in via a VITE_ variable ends up
- * readable in the shipped bundle, so the deployed site ships with no key and
- * each visitor supplies their own, which never leaves their browser.
+ * The key comes from the build env (`VITE_TWELVEDATA_API_KEY`, see
+ * `.env.example`), which means this app is meant to be run locally. A VITE_
+ * variable is inlined into the shipped bundle, so a public deploy built with a
+ * key would hand that key to every visitor. The Pages build carries none and
+ * therefore runs on generated data.
  *
  * When no key is configured, or the network/API fails, the loader falls back to
  * generated data so the UI still works offline. Callers get `isSynthetic: true`
@@ -19,30 +19,11 @@ import type { Candle } from '../types';
  */
 
 const API_BASE = 'https://api.twelvedata.com';
-const KEY_STORAGE = 'xau_td_apikey';
 
-const BUILD_KEY: string = (import.meta.env?.VITE_TWELVEDATA_API_KEY ?? '').trim();
+const API_KEY: string = (import.meta.env?.VITE_TWELVEDATA_API_KEY ?? '').trim();
 
-/** The key in effect: the visitor's own if they set one, else the build's. */
 export function getApiKey(): string {
-    try {
-        const stored = localStorage.getItem(KEY_STORAGE);
-        if (stored && stored.trim()) return stored.trim();
-    } catch {
-        // Private mode or blocked storage — fall through to the build key.
-    }
-    return BUILD_KEY;
-}
-
-/** Store the visitor's key locally, or clear it when given an empty string. */
-export function setApiKey(key: string): void {
-    try {
-        const trimmed = key.trim();
-        if (trimmed) localStorage.setItem(KEY_STORAGE, trimmed);
-        else localStorage.removeItem(KEY_STORAGE);
-    } catch {
-        console.warn('Could not persist the API key (storage unavailable)');
-    }
+    return API_KEY;
 }
 
 export interface FetchOptions {
@@ -88,7 +69,7 @@ export async function fetchCandles(opts: FetchOptions): Promise<CandleResponse> 
             candles: generateSyntheticGold(opts),
             isSynthetic: true,
             notice:
-                'No API key set — showing generated data. Paste a free Twelve Data key in the sidebar for real gold prices.',
+                'No API key set — showing generated data. Add VITE_TWELVEDATA_API_KEY to .env and restart for real gold prices.',
         };
     }
 

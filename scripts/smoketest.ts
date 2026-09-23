@@ -6,6 +6,10 @@
  * curve reconciles with the sum of its trades. Runs on generated candles, so it
  * validates the engine's mechanics, never a strategy's edge.
  */
+import React from 'react';
+import { renderToString } from 'react-dom/server';
+import App from '../src/App';
+import { scanSignals, resolveOutcome } from '../src/engine/liveSignal';
 import { runBacktest } from '../src/engine/backtest';
 import { XAUUSD, pipValue, lotsForRisk, priceMoveToMoney, toPips } from '../src/engine/instrument';
 import { buildStructure } from '../src/engine/priceAction';
@@ -89,6 +93,72 @@ assert(
     const tight = lotsForRisk(XAUUSD, 10000 * (cfg.riskPercent / 100), 10);
     check('wide stop -> $100 risk', wide * 50 * pipValue(XAUUSD, 1), 100);
     check('tight stop -> $100 risk', tight * 10 * pipValue(XAUUSD, 1), 100);
+}
+
+// ── The app actually renders ────────────────────────────────
+// A blank page still typechecks and still builds. The only way to catch a
+// crash on mount is to render the tree.
+console.log('\n--- render ---');
+try {
+    const html = renderToString(React.createElement(App));
+    assert('App renders without throwing', html.length > 0);
+    assert('rendered markup contains the instrument', html.includes('XAU/USD'));
+    assert('rendered markup contains the chart container', html.includes('signal-chart'));
+} catch (e) {
+    failures++;
+    console.log(`FAIL  App threw during render: ${e instanceof Error ? e.message : String(e)}`);
+}
+
+// ── Live signal scan ────────────────────────────────────────
+console.log('\n--- live signals ---');
+{
+    const live: Candle[] = [];
+    let p = 4300;
+    let s2 = 99;
+    const rnd = () => ((s2 = (s2 * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff);
+    const t0 = Date.UTC(2026, 8, 22, 9, 0, 0);
+    for (let i = 0; i < 800; i++) {
+        const o = p;
+        const c = o + Math.sin(i / 60) * 0.7 + (rnd() - 0.5) * 1.1;
+        live.push({
+            timestamp: t0 + i * 60_000,
+            open: o,
+            high: Math.max(o, c) + rnd() * 0.5,
+            low: Math.min(o, c) - rnd() * 0.5,
+            close: c,
+        });
+        p = c;
+    }
+
+    const found = scanSignals(live, XAUUSD);
+    assert(`scan produced signals (${found.length})`, found.length > 0);
+    assert(
+        'never signals on the still-forming last bar',
+        found.every((s) => s.barIndex <= live.length - 2),
+    );
+    assert(
+        'stop sits on the losing side of entry',
+        found.every((s) => (s.side === 'long' ? s.stop < s.entry : s.stop > s.entry)),
+    );
+    assert(
+        'target sits on the winning side of entry',
+        found.every((s) => (s.side === 'long' ? s.target > s.entry : s.target < s.entry)),
+    );
+    assert('every signal has a positive R:R', found.every((s) => s.riskReward > 0));
+    assert(
+        'signals are newest first',
+        found.every((s, i) => i === 0 || found[i - 1].timestamp >= s.timestamp),
+    );
+    const outcomes = found.map((s) => resolveOutcome(s, live).outcome);
+    assert(
+        'outcomes are resolvable',
+        outcomes.every((o) => ['open', 'target hit', 'stop hit'].includes(o)),
+    );
+    console.log(
+        `  outcomes: ${outcomes.filter((o) => o === 'target hit').length} TP, ` +
+        `${outcomes.filter((o) => o === 'stop hit').length} SL, ` +
+        `${outcomes.filter((o) => o === 'open').length} open`,
+    );
 }
 
 // ── Full run: accounting identity ───────────────────────────

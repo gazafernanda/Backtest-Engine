@@ -1,133 +1,92 @@
-# Gold Backtesting Engine
+# XAU/USD Live Signal Monitor
 
-Price action backtesting for **XAU/USD**, in the browser. React + Vite + TypeScript, no backend.
+An M1 gold chart that watches itself. Price action strategies run continuously over the latest
+candles, and the current setup is drawn on the chart as three lines: **entry**, **stop loss**,
+**take profit**.
 
-Originally a crypto backtester built on CoinGecko and indicator crossovers; rebuilt around spot
-gold, lot/pip accounting and price action structure.
+There is nothing to configure and nothing to click.
 
 ---
 
-**Live:** <https://gazafernanda.github.io/Backtest-Engine/>
-
-## Quick start
+## Running it
 
 ```bash
 npm install
 npm run dev
 ```
 
-Then paste a free Twelve Data key (800 requests/day, from
-<https://twelvedata.com/apikey>) into the sidebar. It is kept in your browser's localStorage and
-goes nowhere else.
+The key lives in `.env` (copy `.env.example`), so the app starts and runs with no input:
 
-For a local-only setup you can instead copy `.env.example` to `.env` and set
-`VITE_TWELVEDATA_API_KEY`. The sidebar key wins when both are present.
-
-> **Do not put a key in the deployed build.** Anything passed as a `VITE_` variable is inlined into
-> the JavaScript bundle and readable by anyone who loads the page. The Pages deploy ships with no
-> key on purpose; each visitor supplies their own.
-
-Without a key the app still runs, but on **generated** prices. Those runs are labelled with an
-orange banner and flagged as `isSyntheticData` — they demonstrate the engine, they are not results.
-
-```bash
-npm run build    # typecheck + production bundle
-npm run smoke    # engine self-checks (pip maths, lookahead safety, equity reconciliation)
+```
+VITE_TWELVEDATA_API_KEY=your_key_here
 ```
 
-## Deployment
+A free key comes from <https://twelvedata.com/apikey>.
 
-Pushing to `main` builds and publishes to GitHub Pages via
-`.github/workflows/deploy.yml`. The smoke test gates the deploy — if the engine's arithmetic or
-lookahead guarantees break, nothing ships.
+### Why it runs locally rather than on the web
 
-One-time setup in the repo: **Settings → Pages → Source: GitHub Actions**.
+A `VITE_` variable is inlined into the JavaScript bundle. A public build carrying your key hands
+that key to everyone who loads the page, and your quota is theirs. So the
+[Pages deploy](https://gazafernanda.github.io/Backtest-Engine/) ships without one and runs on
+generated prices — useful as a demo of the interface, not as a signal source.
 
-The build sets Vite's `base` to `/Backtest-Engine/`, since Pages serves project sites from a
-subpath. Rename the repo and that value has to change with it.
+The same constraint will apply to a Telegram bot token. See *Next* below.
 
----
+### Polling budget
 
-## Configuration
-
-The sidebar asks for two things: **how much money** and **how much risk** (Careful 0.5% /
-Balanced 1% / Aggressive 2% per trade). Everything else is derived from those plus the timeframe —
-position size, session filter, spread, slippage, leverage, financing — and the panel lists what was
-chosen, with the reasoning on hover.
-
-Position size is solved backwards from the stop, so a wide setup and a tight one risk the identical
-amount. That is what makes the percentage meaningful.
-
-`Advanced settings` reveals every underlying value. Switching that panel to **Manual** stops the
-automatic derivation and hands the controls over.
-
-## What the engine models
-
-Gold is not traded as a fraction of your account — it is traded in lots, with a spread, financing
-and a margin call. All of that is simulated.
-
-| | |
-|---|---|
-| Contract size | 100 oz per 1.00 lot |
-| Pip | 0.10 of price — **$10 per pip per 1.00 lot** |
-| Lots | 0.01 minimum, 0.01 step |
-| Costs | Spread (pips), commission ($/lot/side), slippage (pips) |
-| Sizing | Fixed lot, or % of equity risked per trade |
-| Leverage | Configurable, with a stop-out level that force-closes positions |
-| Financing | Swap per lot per night, charged at 22:00 UTC, tripled on Wednesday |
-| Sessions | Entries can be restricted to Asia / London / New York / overlap |
-
-### Execution assumptions
-
-These decide the results, so they are stated rather than buried:
-
-1. Candle prices are treated as **mid**. Half the spread plus slippage is applied adversely to every
-   fill, so a round trip pays one full spread whichever way it is taken.
-2. Signals are evaluated on a **closed** bar and fill at that bar's close. A position opened on bar
-   *i* is first managed on bar *i+1*. No lookahead.
-3. When a bar's range contains both the stop and the target, **the stop is taken**. Intrabar order
-   is unknowable from OHLC, and the pessimistic reading is the honest one.
-4. Break-even stop moves are applied on the bar close and bind from the next bar, for the same
-   reason.
-5. Swing highs and lows are only visible `lookback` bars after they form — the bar at which they
-   could actually have been known.
-
-Point 5 matters more than it sounds. A swing detected with a centred window is trivially profitable
-to trade in a backtest and impossible to trade live. `npm run smoke` asserts the confirmation delay
-explicitly.
+One request every **2 minutes** — 720 a day against the free tier's 800. Polling every minute would
+exhaust the quota partway through the day.
 
 ---
 
-## Strategies
+## What you see
 
-All five emit their own **structural stop and target**, so risk is defined by what invalidates the
-setup rather than an arbitrary pip distance. The fixed stop/target in the config is only a fallback,
-used when a strategy supplies none.
+- **Chart** — M1 candles, auto-refreshing, with entry/SL/TP as labelled price lines and an arrow on
+  the signal bar. Panning and zooming survive refreshes.
+- **Setup card** — side, which strategy fired, the three levels, pip distances and R:R, plus whether
+  the trade has since hit its target, its stop, or is still open.
+- **Earlier signals** — the last 20, each resolved the same way.
+
+Signals only ever come from **closed** bars. The newest candle from the feed is still forming, and a
+setup on it can vanish before the bar completes.
+
+---
+
+## The strategies
+
+Five, all running at once. Whichever fired most recently is the one on the chart.
 
 | Strategy | Idea |
 |---|---|
-| **Break of Structure + Retest** | Close beyond the last swing, then enter on the pullback that holds the broken level. Expires if the retest never arrives. |
-| **Liquidity Sweep** | A spike through a swing that closes back inside it — the stop-hunt signature. Must clear the level by a minimum ATR fraction. |
-| **Engulfing Pullback** | Engulfing bars, but only in the direction of confirmed structure, and only when the body is large relative to ATR. |
-| **Pin Bar Rejection** | A pin bar whose wick actually reaches a confirmed swing level and whose body closes away from it. |
+| **Break of Structure + Retest** | Close beyond the last swing, then the pullback that holds the broken level. |
+| **Liquidity Sweep** | A spike through a swing that closes back inside it — the stop-hunt signature. |
+| **Engulfing Pullback** | Engulfing bars, but only with confirmed structure and a body large relative to ATR. |
+| **Pin Bar Rejection** | A pin bar whose wick actually reaches a swing level and whose body closes away from it. |
 | **Inside Bar Breakout** | Break of the mother bar after a compression. The coil defines the stop. |
+
+Each supplies its own stop and target, so the risk comes from what invalidates the setup rather
+than a fixed pip distance.
+
+Swings carry a **confirmation delay** — a swing high is only visible some bars after it forms, which
+is when it could actually have been known. Detecting swings with a centred window instead produces
+signals that look excellent in review and cannot be taken live.
 
 ---
 
-## Metrics
+## Verifying it
 
-Beyond the usual return/win-rate/profit-factor/drawdown set:
+```bash
+npm run smoke
+```
 
-- **Net pips** and **R multiple** per trade — the two numbers that survive a change in account size
-- **MAE / MFE** per trade, in pips: how far each trade went against you before it worked, and how
-  much of the favourable move you gave back
-- **Expectancy** in both dollars and R
-- **Longest losing streak** — usually the number that decides whether a system is actually tradable
-- Total commission, total swap, and any margin stop-outs
+Checks the pip and lot arithmetic, the swing confirmation delay, that signals never land on the
+open bar and always sit on the correct side of their levels, that the backtest engine's equity
+reconciles with its trades — and that the app renders. That last one exists because a blank page
+typechecks and builds perfectly well.
 
-Sharpe is annualised from the **bar duration**, using a 24×5 trading week. Annualising M1 returns
-with a 365-day factor, as the original crypto engine did, overstates it by more than an order of
-magnitude.
+```bash
+npm run build      # typecheck + production bundle
+```
 
 ---
 
@@ -136,32 +95,39 @@ magnitude.
 ```
 src/
   engine/
-    instrument.ts       Contract spec and all pip/lot/margin arithmetic
-    backtest.ts         Simulation loop: fills, stops, swap, margin, sizing
-    metrics.ts          Performance statistics
+    liveSignal.ts       Scan all strategies, resolve outcomes
     priceAction.ts      Swings, market structure, candle patterns, sessions
-    indicators/atr.ts   ATR (Wilder) for volatility-scaled stops
-    strategies/         The five price action strategies
-  data/twelvedata.ts    Market data + localStorage cache + synthetic fallback
-  components/           Dashboard, charts, config panel
-  context/              App state
-scripts/smoketest.ts    Engine self-checks
+    strategies/         The five setups
+    instrument.ts       Gold contract spec, pip/lot/margin arithmetic
+    backtest.ts         Full simulation (costs, swap, margin) - kept for testing
+    metrics.ts          Performance statistics
+    autoConfig.ts       Derives sizing/costs from account size and risk appetite
+    indicators/atr.ts   ATR (Wilder)
+  components/
+    LiveMonitor.tsx     Polling loop and layout
+    SignalChart.tsx     Candles + entry/SL/TP lines
+  data/twelvedata.ts    Market data, cache, synthetic fallback
+scripts/smoketest.ts    Self-checks
 ```
 
-To add a strategy: implement `Strategy` from `src/types`, register it in
-`src/engine/strategies/index.ts`. The config panel builds its controls from `paramDefs`
-automatically.
+The backtesting engine is no longer wired to the UI but is kept and still tested — it is what
+established that these strategies behave sanely, and it is where position sizing will come from when
+alerts start carrying a lot size.
 
 ---
 
-## Caveats worth keeping in mind
+## Next
 
-- **The free data tier caps at 5000 bars per request.** On M1 that is about 3.5 trading days — fine
-  for examining a setup's behaviour, far too short to judge an edge. Use higher timeframes, or a
-  broker CSV export, for anything conclusive.
-- **Twelve Data is not your broker.** Its spread, session boundaries and weekend gaps will differ
-  from your account's. Treat the cost settings as something to calibrate against your own fills.
-- **A backtest is a hypothesis, not a forecast.** Slippage during news, requotes, and variable
-  spread are not modelled here, and on M1 gold they are not small.
-- The API key is inlined into the client bundle, which is fine for a local tool. Proxy it through a
-  backend before deploying this anywhere public.
+**Telegram alerts.** The bot token has the same exposure problem as the API key, so it cannot live
+in a browser bundle. It needs a small local process — a script that polls, detects a new signal and
+calls the Telegram API — which can share the `engine/` code directly.
+
+---
+
+## Caveats
+
+- **Twelve Data is not your broker.** Its prices, spread and session boundaries differ from your
+  account's.
+- **A signal is a hypothesis.** Slippage during news, requotes and variable spread are not modelled,
+  and on M1 gold they are not small.
+- The free tier caps at 5000 bars, and this uses 500 — roughly the last 8 hours of M1.
